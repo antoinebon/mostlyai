@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-from collections.abc import Callable
 from pathlib import Path
+from collections.abc import Callable
 
-from mostlyai.sdk.domain import Generator, ModelType
+from mostlyai.sdk.domain import ModelType, Generator
 
 _LOG = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def execute_step_train_model(
 ):
     # import ENGINE here to avoid pre-mature loading of large ENGINE dependencies
     from mostlyai import engine
-    from mostlyai.engine.domain import DifferentialPrivacyConfig, ModelStateStrategy
+    from mostlyai.engine.domain import ModelStateStrategy, DifferentialPrivacyConfig
 
     _LOG.info(f"mostlyai-engine: {engine.__version__}")
 
@@ -43,30 +43,21 @@ def execute_step_train_model(
     else:
         model_config = tgt_table.tabular_model_configuration
 
+    model_config_dict = model_config.model_dump()
+
     # convert from SDK domain to ENGINE domain
     if model_config.differential_privacy:
-        differential_privacy = DifferentialPrivacyConfig(**model_config.differential_privacy.model_dump())
-    else:
-        differential_privacy = None
+        model_config_dict["differential_privacy"] = DifferentialPrivacyConfig(**model_config_dict["differential_privacy"])
 
     # ensure disallowed arguments are set to None
     if model_type == ModelType.language:
-        max_sequence_window = None
-    else:  # model_type == ModelType.tabular
-        max_sequence_window = model_config.max_sequence_window
+        model_config_dict["max_sequence_window"] = None
 
     # call TRAIN
     engine.train(
-        model=model_config.model,
-        max_training_time=model_config.max_training_time,
-        max_epochs=model_config.max_epochs,
-        batch_size=model_config.batch_size,
-        gradient_accumulation_steps=model_config.gradient_accumulation_steps,
-        enable_flexible_generation=model_config.enable_flexible_generation,
-        max_sequence_window=max_sequence_window,
-        differential_privacy=differential_privacy,
         model_state_strategy=ModelStateStrategy.resume if restarts > 0 else ModelStateStrategy.reuse,
         workspace_dir=workspace_dir,
         upload_model_data_callback=upload_model_data_callback,
         update_progress=update_progress,
+        **model_config_dict,
     )
